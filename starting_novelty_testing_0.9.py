@@ -356,7 +356,7 @@ CULTURE_MUTATION_RATE = 0.005
 # How many cultural types should exist at the beginning?
 CULTURE_TYPES = 16
 # What proportion of the starting population should have a novelty preference?
-PROPORTION_NOVELTY = 0.25
+# PROPORTION_NOVELTY = 0.25
 # How many times should this process be replicated?
 REPLICATES = 5
 # How often should results be recorded?
@@ -364,27 +364,24 @@ RECORD_ITER = 5
 # should the figures be saved to pdf & png
 savefigs = True
 
+
 # setup for the models:
 
 # test models with the following ideal-neighbor-proportions:
-ideal_neighbor_to_test = []
-# 0.0 to 0.4 at intervals of 0.1
-[ideal_neighbor_to_test.append(i/10) for i in range(5)]
-# 0.5 to 1.0 at intervals of 0.05
-[ideal_neighbor_to_test.append(0.5 + i/20) for i in range(11)]
-# replicate some number of times
-ideal_neighbor_to_test = np.repeat(ideal_neighbor_to_test, REPLICATES)
+starting_novelty_to_test = []
+[starting_novelty_to_test.append(i/10) for i in range(11)]
+starting_novelty_to_test = np.repeat(starting_novelty_to_test, REPLICATES)
 
 # create models to test
 culture_matrix_list = [
-    CultureMatrix(DIM, CULTURE_TYPES, PROPORTION_NOVELTY,
+    CultureMatrix(DIM, CULTURE_TYPES, sn,
                   MORTALITY_RATE,
-                  ideal_neighbors=inp,
+                  ideal_neighbors=0.9,
                   learning_mutation_rate=LEARNING_MUTATION_RATE,
                   culture_mutation_rate=CULTURE_MUTATION_RATE,
                   seed=np.random.randint(SEED * 1000),
                   record_iter=RECORD_ITER)
-    for inp in ideal_neighbor_to_test
+    for sn in starting_novelty_to_test
 ]
 
 
@@ -403,7 +400,6 @@ def run_model(i):
 # use 8 threads
 pool = Pool(8)
 
-# Run the models in parallel
 culture_matrix_list = pool.map(run_model, list(range(len(culture_matrix_list))))
 
 
@@ -412,7 +408,7 @@ culture_matrix_list = pool.map(run_model, list(range(len(culture_matrix_list))))
 # plot final novelty values per INP
 def plot_results_novelty(results_list):
     # create scatter-plot of final conformity results for all replicates and ideal-neighbor-proportions
-    x = np.array([n.ideal_neighbors for n in results_list])
+    x = np.array([n.proportion_novelty for n in results_list])
     y = np.array([np.mean(n.learning_history[1, -10:]) /
                   np.sum(n.learning_history[:, 0]) for n in results_list])
     y_err = np.array([np.std(y[x == x_val]) for x_val in np.unique(x)]) * np.sqrt(REPLICATES / (REPLICATES - 1))
@@ -427,79 +423,12 @@ def plot_results_novelty(results_list):
                  [np.mean(y[i*REPLICATES:(i+1)*REPLICATES]) for i in range(int(len(x)/REPLICATES))],
                  yerr=y_err, fmt='none', color="red", elinewidth=3)
     plt.axhline(1, 0, 1, ls="--", c='k')
-    plt.xlabel("Ideal neighbor proportion")
-    plt.ylabel("Proportion Novelty")
+    plt.xlabel("Initial Proportion Novelty")
+    plt.ylabel("Final Proportion Novelty")
 
 
 f1 = plt.figure(figsize=(15, 9))
 plot_results_novelty(culture_matrix_list)
 if savefigs:
-    f1.savefig("out/Final_conformity_fraction.pdf", bbox_inches='tight')
-    f1.savefig("out/Final_conformity_fraction.png", bbox_inches='tight')
-# plt.show()
-
-
-# plot proportion novelty-preference over time
-plt.rcParams["axes.prop_cycle"] = plt.cycler(
-    "color",
-    plt.cm.viridis(np.linspace(0, 1, int(len(culture_matrix_list)/REPLICATES))))
-
-f2 = plt.figure(figsize=(20, 10))
-
-for ideal_n in np.unique([n.ideal_neighbors for n in culture_matrix_list]):
-    plt.plot([i*RECORD_ITER for i in range(int(ITERATIONS/RECORD_ITER))],
-             np.transpose(
-                 np.mean([n.learning_history[1, :]/np.sum(n.learning_history[:, 0])
-                          for n in culture_matrix_list if n.ideal_neighbors == ideal_n],
-                         axis=0)),
-             label=str(ideal_n)
-             )
-
-plt.axhline(1, 0, ITERATIONS * 1.25, ls="--", c='k')
-plt.legend(title="INP", loc="upper left")
-plt.xlabel("Time-step")
-plt.ylim((0.15, 1.1))
-plt.xlim((ITERATIONS * -0.1, ITERATIONS * 1.1))
-plt.ylabel("Proportion novelty preference")
-
-if savefigs:
-    f2.savefig("out/Novelty_over_time.pdf", bbox_inches='tight')
-    f2.savefig("out/Novelty_over_time.png", bbox_inches='tight')
-# plt.show()
-
-
-# plot 'sobel_sum' over time
-f3 = plt.figure(figsize=(20, 10))
-
-for ideal_n in np.unique([n.ideal_neighbors for n in culture_matrix_list]):
-    plt.plot([i*RECORD_ITER for i in range(int(ITERATIONS/RECORD_ITER))],
-             np.transpose(
-                 np.mean([n.sobel_sum for n in culture_matrix_list if n.ideal_neighbors == ideal_n],
-                         axis=0)),
-             label=str(ideal_n)
-             )
-plt.legend(title="INP", loc="lower left")
-plt.xlim((0, ITERATIONS))
-plt.xlabel("Time-step")
-plt.ylabel("Spatial derivative")
-
-if savefigs:
-    f3.savefig("out/Derivative_over_time.pdf", bbox_inches='tight')
-    f3.savefig("out/Derivative_over_time.png", bbox_inches='tight')
-# plt.show()
-
-
-# examples of entropy plots for each INP
-f4 = plt.figure(figsize=(20, 20))
-
-for subplot, i in enumerate(np.arange(4, len(ideal_neighbor_to_test), step=REPLICATES)):
-    ax = f4.add_subplot(4, 4, subplot+1)
-    ax.set_title("INP: " + str(ideal_neighbor_to_test[i]))
-    culture_matrix_list[i].visualize_matrix(ax=ax)
-    ax.set_xticks([])
-    ax.set_yticks([])
-
-if savefigs:
-    f4.savefig("out/example_INP_entropy.pdf", bbox_inches='tight')
-    f4.savefig("out/example_INP_entropy.png", bbox_inches='tight')
-# plt.show()
+    f1.savefig("out/Final_conformity_fraction_0.9.pdf", bbox_inches='tight')
+    f1.savefig("out/Final_conformity_fraction_0.9.png", bbox_inches='tight')
